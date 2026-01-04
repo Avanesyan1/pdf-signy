@@ -1,0 +1,55 @@
+name: pdf_signy
+description: "A new Flutter project."
+publish_to: 'none' 
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  syncfusion_flutter_signaturepad: ^32.1.21
+  drift: ^2.18.0
+  sqlite3_flutter_libs: ^0.5.20
+  path_provider: ^2.1.2
+  path: ^1.9.0
+  file_picker: ^8.1.2
+  auto_route: ^9.3.0+1
+  flutter_pdfview: ^1.4.3
+  syncfusion_flutter_pdf: ^32.1.21
+  share_plus: ^10.1.2
+  printing: ^5.13.3
+  permission_handler: ^11.3.1
+  image_picker: ^1.1.2
+  flutter_doc_scanner: ^0.0.16
+  pdf: ^3.11.1
+  image: ^4.3.0
+  url_launcher: ^6.3.1
+  flutter_launcher_icons: ^0.14.4
+  in_app_review: ^2.0.11
+  shared_preferences: ^2.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^5.0.0
+  drift_dev: ^2.18.0
+  build_runner: ^2.4.10
+  auto_route_generator: ^9.0.0
+
+flutter:
+
+  uses-material-design: true
+
+  assets:
+    - assets/
+
+flutter_launcher_icons:
+  ios: true
+  image_path: "assets/icon.jpeg"
+  remove_alpha_ios: true
