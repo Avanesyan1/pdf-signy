@@ -5,5 +5,6 @@ class AppLinks {
   static const String termsOfUse =
       'https://docs.google.com/document/d/1YyDhZd45ornQ7bEfBBV4CLdxeOb-D6RVWzKBfs7uTLU/edit?usp=sharing';
 
-  static const String support = 'avantech.am@gmail.com';
+  static const String support = 'artsyom.avanesov@gmail.com';
+  static const String purchasesKey = 'appl_YNwqlHDtekoitrgHhpUSEPboJyL';
 }

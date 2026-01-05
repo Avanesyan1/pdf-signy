@@ -1,7 +1,10 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 import '../router/app_router.dart';
+import '../services/premium_service.dart';
+import '../services/analytics_service.dart';
 
 @RoutePage()
 class OnboardingScreen extends StatefulWidget {
@@ -12,27 +15,16 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  @override
-  void initState() {
-    super.initState();
-    _checkOnboardingStatus();
-  }
-
-  Future<void> _checkOnboardingStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
-    if (hasSeenOnboarding && mounted) {
-      context.router.replace(const MainTabRoute());
-    }
-  }
   final PageController _pageController = PageController();
   int _currentPage = 0;
   bool _showCloseButton = false;
+  bool _isLoadingPurchase = false;
 
   final List<_OnboardingPage> _pages = [
     _OnboardingPage(
       title: 'Sign PDF Documents',
-      description: 'Easily sign your PDF documents with digital signatures. Quick, simple, and secure.',
+      description:
+          'Easily sign your PDF documents with digital signatures. Quick, simple, and secure.',
       imagePath: 'assets/o1.jpeg',
     ),
     _OnboardingPage(
@@ -54,13 +46,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    AnalyticsService.instance.logOnboardingScreen();
+  }
+
+  @override
   void dispose() {
     _pageController.dispose();
     super.dispose();
   }
 
   void _showCloseButtonWithDelay() {
-    Future.delayed(const Duration(seconds: 4), () {
+    Future.delayed(const Duration(seconds: 5), () {
       if (mounted && _currentPage == _pages.length - 1) {
         setState(() {
           _showCloseButton = true;
@@ -72,6 +70,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _completeOnboarding() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('has_seen_onboarding', true);
+    AnalyticsService.instance.logOnboardingCompleted();
     if (mounted) {
       context.router.replace(const MainTabRoute());
     }
@@ -83,8 +82,59 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
       );
-    } else {
-      _completeOnboarding();
+    }
+    // На последнем экране кнопка Continue не работает, только close
+  }
+
+  Future<void> _handlePurchase() async {
+    if (_isLoadingPurchase) return;
+
+    setState(() {
+      _isLoadingPurchase = true;
+    });
+
+    try {
+      final products = PremiumService.instance.products.value;
+      if (products.isNotEmpty) {
+        // Находим недельную подписку (первая в списке)
+        final weeklyProduct = products.firstWhere(
+          (p) => p.identifier == 'com.pdfSigny532.week',
+          orElse: () => products.first,
+        );
+
+        final success = await PremiumService.instance.buyProduct(weeklyProduct);
+        if (success && mounted) {
+          await PremiumService.instance.checkPremiumStatus();
+          if (PremiumService.instance.havePremium.value && mounted) {
+            AnalyticsService.instance.logPremiumPurchased(productId: weeklyProduct.identifier);
+            await _completeOnboarding();
+          }
+        } else {
+          AnalyticsService.instance.logPremiumPurchaseFailed();
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        showCupertinoDialog(
+          context: context,
+          builder: (context) => CupertinoAlertDialog(
+            title: const Text('Error'),
+            content: Text('Failed to complete purchase: $e'),
+            actions: [
+              CupertinoDialogAction(
+                child: const Text('OK'),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingPurchase = false;
+        });
+      }
     }
   }
 
@@ -118,7 +168,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     },
                     itemCount: _pages.length,
                     itemBuilder: (context, index) {
-                      return _OnboardingPageWidget(page: _pages[index]);
+                      return _OnboardingPageWidget(
+                        page: _pages[index],
+                        isLastPage: index == _pages.length - 1,
+                        onPurchaseTap: _handlePurchase,
+                        isLoadingPurchase: _isLoadingPurchase,
+                      );
                     },
                   ),
                   if (_currentPage == _pages.length - 1 && _showCloseButton)
@@ -132,13 +187,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           child: Container(
                             width: 32,
                             height: 32,
-                            decoration: BoxDecoration(
-                              color: CupertinoColors.black.withOpacity(0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
+                            decoration: BoxDecoration(shape: BoxShape.circle),
+                            child: Icon(
                               CupertinoIcons.xmark,
-                              color: CupertinoColors.white,
+                              color: CupertinoColors.black.withOpacity(0.3),
                               size: 18,
                             ),
                           ),
@@ -188,8 +240,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
 class _OnboardingPageWidget extends StatelessWidget {
   final _OnboardingPage page;
+  final bool isLastPage;
+  final VoidCallback? onPurchaseTap;
+  final bool isLoadingPurchase;
 
-  const _OnboardingPageWidget({required this.page});
+  const _OnboardingPageWidget({
+    required this.page,
+    this.isLastPage = false,
+    this.onPurchaseTap,
+    this.isLoadingPurchase = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -205,11 +265,7 @@ class _OnboardingPageWidget extends StatelessWidget {
               return Container(
                 color: CupertinoColors.systemGrey5,
                 child: const Center(
-                  child: Icon(
-                    CupertinoIcons.photo,
-                    size: 100,
-                    color: CupertinoColors.systemGrey,
-                  ),
+                  child: Icon(CupertinoIcons.photo, size: 100, color: CupertinoColors.systemGrey),
                 ),
               );
             },
@@ -232,14 +288,64 @@ class _OnboardingPageWidget extends StatelessWidget {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
-                Text(
-                  page.description,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    color: CupertinoColors.systemGrey,
+                if (isLastPage)
+                  ValueListenableBuilder<List<StoreProduct>>(
+                    valueListenable: PremiumService.instance.products,
+                    builder: (context, products, _) {
+                      if (products.isEmpty) {
+                        return Text(
+                          page.description,
+                          style: const TextStyle(fontSize: 16, color: CupertinoColors.systemGrey),
+                          textAlign: TextAlign.center,
+                        );
+                      }
+
+                      final weeklyProduct = products.firstWhere(
+                        (p) => p.identifier == 'com.pdfSigny532.week',
+                        orElse: () => products.first,
+                      );
+
+                      final weeklyPrice = PremiumService.instance.getWeeklyPrice(weeklyProduct);
+
+                      return GestureDetector(
+                        onTap: isLoadingPurchase ? null : onPurchaseTap,
+                        child: Text.rich(
+                          TextSpan(
+                            text: '${page.description} ',
+                            style: const TextStyle(fontSize: 16, color: CupertinoColors.systemGrey),
+                            children: [
+                              TextSpan(
+                                text: weeklyPrice,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: CupertinoColors.systemGrey,
+                                ),
+                              ),
+                              if (isLoadingPurchase)
+                                const WidgetSpan(
+                                  alignment: PlaceholderAlignment.middle,
+                                  child: SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CupertinoActivityIndicator(
+                                      color: CupertinoColors.systemRed,
+                                      radius: 8,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      );
+                    },
+                  )
+                else
+                  Text(
+                    page.description,
+                    style: const TextStyle(fontSize: 16, color: CupertinoColors.systemGrey),
+                    textAlign: TextAlign.center,
                   ),
-                  textAlign: TextAlign.center,
-                ),
               ],
             ),
           ),
@@ -281,4 +387,3 @@ class _OnboardingPage {
     this.isPremium = false,
   });
 }
-

@@ -14,6 +14,8 @@ import '../screens/onboarding_screen.dart';
 import '../screens/create_stamp_screen.dart';
 import '../screens/stamps_list_screen.dart';
 import '../screens/select_stamp_screen.dart';
+import '../screens/paywall_screen.dart';
+import '../screens/splash_screen.dart';
 
 part 'app_router.gr.dart';
 
@@ -21,7 +23,7 @@ part 'app_router.gr.dart';
 class AppRouter extends RootStackRouter {
   @override
   List<AutoRoute> get routes => [
-    CupertinoRoute(page: OnboardingRoute.page, initial: true),
+    CupertinoRoute(page: SplashRoute.page, initial: true),
     AutoRoute(
       page: MainTabRoute.page,
       children: [
@@ -38,5 +40,7 @@ class AppRouter extends RootStackRouter {
     CupertinoRoute(page: StatisticsRoute.page),
     CupertinoRoute(page: CreateStampRoute.page),
     CupertinoRoute(page: SelectStampRoute.page),
+    CupertinoRoute(page: OnboardingRoute.page),
+    CupertinoRoute(page: PaywallRoute.page),
   ];
 }

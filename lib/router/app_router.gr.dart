@@ -107,6 +107,22 @@ class OnboardingRoute extends PageRouteInfo<void> {
 }
 
 /// generated route for
+/// [PaywallScreen]
+class PaywallRoute extends PageRouteInfo<void> {
+  const PaywallRoute({List<PageRouteInfo>? children})
+    : super(PaywallRoute.name, initialChildren: children);
+
+  static const String name = 'PaywallRoute';
+
+  static PageInfo page = PageInfo(
+    name,
+    builder: (data) {
+      return const PaywallScreen();
+    },
+  );
+}
+
+/// generated route for
 /// [SelectSignatureScreen]
 class SelectSignatureRoute extends PageRouteInfo<void> {
   const SelectSignatureRoute({List<PageRouteInfo>? children})
@@ -203,6 +219,22 @@ class SignaturesListRoute extends PageRouteInfo<void> {
     name,
     builder: (data) {
       return const SignaturesListScreen();
+    },
+  );
+}
+
+/// generated route for
+/// [SplashScreen]
+class SplashRoute extends PageRouteInfo<void> {
+  const SplashRoute({List<PageRouteInfo>? children})
+    : super(SplashRoute.name, initialChildren: children);
+
+  static const String name = 'SplashRoute';
+
+  static PageInfo page = PageInfo(
+    name,
+    builder: (data) {
+      return const SplashScreen();
     },
   );
 }

@@ -1,5 +1,9 @@
 import 'package:flutter/cupertino.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:pdf_signy/firebase_options.dart';
+import 'package:pdf_signy/services/notification_service.dart';
+import 'package:pdf_signy/services/premium_service.dart';
+import 'package:pdf_signy/services/analytics_service.dart';
 import 'database/database.dart';
 import 'router/app_router.dart';
 
@@ -8,7 +12,12 @@ final appRouter = AppRouter();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Инициализируем базу данных
+  // Initialize Firebase
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await AnalyticsService.instance.init();
+
+  PremiumService.instance.init();
+  NotificationService.instance.init();
   AppDatabase.instance;
 
   runApp(const App());

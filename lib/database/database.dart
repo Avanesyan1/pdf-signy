@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
@@ -42,35 +41,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase._internal() : super(_openConnection());
 
   @override
-  int get schemaVersion => 5;
-
-  @override
-  MigrationStrategy get migration {
-    return MigrationStrategy(
-      onCreate: (Migrator m) async {
-        await m.createAll();
-      },
-      onUpgrade: (Migrator m, int from, int to) async {
-        if (from < 2) {
-          // Add signedAt column
-          await m.addColumn(documents, documents.signedAt);
-        }
-        if (from < 3) {
-          // Add isFavorite column
-          await m.addColumn(documents, documents.isFavorite);
-        }
-        if (from < 4) {
-          // Add Categories table and categoryId column
-          await m.createTable(categories);
-          await m.addColumn(documents, documents.categoryId);
-        }
-        if (from < 5) {
-          // Add Stamps table
-          await m.createTable(stamps);
-        }
-      },
-    );
-  }
+  int get schemaVersion => 1;
 
   static AppDatabase? _instance;
 
@@ -127,14 +98,11 @@ class AppDatabase extends _$AppDatabase {
     int? categoryId,
   }) async {
     try {
-      final companion = DocumentsCompanion.insert(
-        pdfBytes: pdfBytes,
-        name: fileName,
-      ).copyWith(
+      final companion = DocumentsCompanion.insert(pdfBytes: pdfBytes, name: fileName).copyWith(
         isFavorite: Value(isFavorite),
         categoryId: categoryId != null ? Value(categoryId) : const Value.absent(),
       );
-      
+
       return await _insertDocument(companion);
     } catch (e) {
       rethrow;

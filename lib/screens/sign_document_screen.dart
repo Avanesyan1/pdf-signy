@@ -7,10 +7,14 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:drift/drift.dart' hide Column;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../database/database.dart' as db;
 import '../pdf/widgets/signature_overlay_widget.dart';
 import '../pdf/helper/signature_utils.dart';
 import '../router/app_router.dart';
+import '../services/premium_service.dart';
+import '../services/app_logger.dart';
+import '../services/analytics_service.dart';
 
 @RoutePage()
 class SignDocumentScreen extends StatefulWidget {
@@ -256,6 +260,9 @@ class _SignDocumentScreenState extends State<SignDocumentScreen> {
   }
 
   Future<void> _savePdfWithSignatures() async {
+    // Log save button press
+    AppLogger().info('Save button pressed for document ID: ${widget.document.id}');
+
     if (_tempPdfPath == null ||
         _signaturePng == null ||
         _signatureImage == null ||
@@ -264,25 +271,61 @@ class _SignDocumentScreenState extends State<SignDocumentScreen> {
       return;
     }
 
+    // Check premium status and free signatures limit
+    final hasPremium = PremiumService.instance.havePremium.value;
+    bool shouldIncrementCounter = false;
+    
+    AppLogger().info('Save check - HasPremium: $hasPremium, DocumentID: ${widget.document.id}');
+    
+    if (!hasPremium) {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Get list of signed document IDs
+      final signedDocIdsString = prefs.getString('free_signed_document_ids') ?? '';
+      final signedDocIds = signedDocIdsString.isEmpty 
+          ? <int>[] 
+          : signedDocIdsString.split(',').map((e) => int.tryParse(e)).whereType<int>().toList();
+      
+      // Check if this document was already signed for free
+      final alreadySignedForFree = signedDocIds.contains(widget.document.id);
+      
+      AppLogger().info('Free signatures check - Document ID: ${widget.document.id}, Already in list: $alreadySignedForFree, Total signed: ${signedDocIds.length}, List: $signedDocIds');
+      
+      if (alreadySignedForFree) {
+        // Document already in free list - allow save without restrictions
+        AppLogger().info('Document already in free list. Allowing save without counting.');
+      } else {
+        // Document not in free list - check limit
+        // If document was signed before but not in list, add it to list if limit allows
+        final wasSignedBefore = widget.document.signedAt != null;
+        
+        if (wasSignedBefore && signedDocIds.length < 1) {
+          // Document was signed before but not in list - add it now (grandfathered)
+          shouldIncrementCounter = true;
+          AppLogger().info('Document was signed before but not in list. Adding to list (grandfathered).');
+        } else if (signedDocIds.length >= 1) {
+          // Limit reached - show paywall
+          AppLogger().info('Free signature limit reached (${signedDocIds.length} documents). Opening paywall.');
+          AnalyticsService.instance.logFreeSignatureLimitReached();
+          AnalyticsService.instance.logPaywallShown(source: 'free_limit_reached');
+          // Open paywall directly
+          if (mounted) {
+            await context.router.push(const PaywallRoute());
+          }
+          return;
+        } else {
+          // New document, limit not reached - mark for increment
+          shouldIncrementCounter = true;
+          AppLogger().info('Preparing to use free signature for document ID: ${widget.document.id}');
+        }
+      }
+    } else {
+      AppLogger().info('User has premium. Allowing save without restrictions.');
+    }
+
     setState(() {
       _isSaving = true;
     });
-
-    // Show loading dialog
-    showCupertinoDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => CupertinoAlertDialog(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CupertinoActivityIndicator(),
-            const SizedBox(height: 16),
-            const Text('Saving document...'),
-          ],
-        ),
-      ),
-    );
 
     try {
       final document = PdfDocument(inputBytes: File(_tempPdfPath!).readAsBytesSync());
@@ -334,12 +377,30 @@ class _SignDocumentScreenState extends State<SignDocumentScreen> {
       );
       await db.AppDatabase.instance.updateDocument(updatedDocument);
 
-      if (mounted) {
-        // Close loading dialog
-        if (Navigator.of(context, rootNavigator: true).canPop()) {
-          Navigator.of(context, rootNavigator: true).pop();
+      // Increment free signature counter AFTER successful save
+      if (shouldIncrementCounter && !hasPremium) {
+        final prefs = await SharedPreferences.getInstance();
+        final signedDocIdsString = prefs.getString('free_signed_document_ids') ?? '';
+        final signedDocIds = signedDocIdsString.isEmpty 
+            ? <int>[] 
+            : signedDocIdsString.split(',').map((e) => int.tryParse(e)).whereType<int>().toList();
+        
+        // Double check that document is not already in the list (race condition protection)
+        if (!signedDocIds.contains(widget.document.id)) {
+          signedDocIds.add(widget.document.id);
+          await prefs.setString('free_signed_document_ids', signedDocIds.join(','));
+          AppLogger().info('Free signature used. Document ID: ${widget.document.id}. Total used: ${signedDocIds.length}');
+          AnalyticsService.instance.logFreeSignatureUsed(documentId: widget.document.id);
         }
+      }
 
+      // Log document signed event
+      AnalyticsService.instance.logDocumentSigned(
+        isFree: !hasPremium,
+        documentId: widget.document.id,
+      );
+
+      if (mounted) {
         // Navigate back immediately
         _isNavigatingAway = true;
         if (mounted) {
@@ -348,10 +409,6 @@ class _SignDocumentScreenState extends State<SignDocumentScreen> {
       }
     } catch (e) {
       if (mounted) {
-        // Close loading dialog if still open
-        if (Navigator.of(context, rootNavigator: true).canPop()) {
-          Navigator.of(context, rootNavigator: true).pop();
-        }
         _showError('Failed to save PDF: $e');
       }
     } finally {
@@ -470,10 +527,12 @@ class _SignDocumentScreenState extends State<SignDocumentScreen> {
             : null,
         border: Border(bottom: BorderSide(color: CupertinoColors.separator, width: 0.5)),
       ),
-      child: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
+      child: Stack(
+        children: [
+          SafeArea(
+            child: Column(
+              children: [
+                Expanded(
               child: Container(
                 margin: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -732,6 +791,35 @@ class _SignDocumentScreenState extends State<SignDocumentScreen> {
             ),
           ],
         ),
+          ),
+          // Loading overlay
+          if (_isSaving)
+            Positioned.fill(
+              child: Container(
+                color: CupertinoColors.black.withOpacity(0.3),
+                child: const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CupertinoActivityIndicator(
+                        radius: 20,
+                        color: CupertinoColors.white,
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        'Signing document...',
+                        style: TextStyle(
+                          color: CupertinoColors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

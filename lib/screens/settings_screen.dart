@@ -4,6 +4,7 @@ import 'package:in_app_review/in_app_review.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../config/app_links.dart';
 import '../router/app_router.dart';
+import '../services/premium_service.dart';
 
 @RoutePage()
 class SettingsScreen extends StatelessWidget {
@@ -23,9 +24,21 @@ class SettingsScreen extends StatelessWidget {
         border: Border(bottom: BorderSide(color: CupertinoColors.separator, width: 0.5)),
       ),
       child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
+        child: ValueListenableBuilder<bool>(
+          valueListenable: PremiumService.instance.havePremium,
+          builder: (context, hasPremium, _) {
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // Premium banner
+                if (!hasPremium) ...[
+                  _PremiumBanner(
+                    onTap: () {
+                      context.router.push(const PaywallRoute());
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                ],
             _SettingsSection(
               title: 'Information',
               children: [
@@ -72,7 +85,9 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ],
             ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );
@@ -161,6 +176,83 @@ class _SettingsSection extends StatelessWidget {
           child: Column(children: children),
         ),
       ],
+    );
+  }
+}
+
+class _PremiumBanner extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _PremiumBanner({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoButton(
+      padding: EdgeInsets.zero,
+      onPressed: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              CupertinoColors.systemRed,
+              CupertinoColors.systemRed.withOpacity(0.8),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: CupertinoColors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                CupertinoIcons.star_fill,
+                color: CupertinoColors.white,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Unlock Premium',
+                    style: TextStyle(
+                      color: CupertinoColors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Get unlimited access to all features',
+                    style: TextStyle(
+                      color: CupertinoColors.white.withOpacity(0.9),
+                      fontSize: 14,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              CupertinoIcons.chevron_right,
+              color: CupertinoColors.white,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
